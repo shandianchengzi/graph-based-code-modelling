@@ -78,7 +78,7 @@ namespace SourceGraphExtractionUtils
 
         public (Dictionary<SyntaxNodeOrToken, int> NodeNumberer, Dictionary<SyntaxNodeOrToken, string> NodeLabeler) WriteJsonProperties(JsonWriter jWriter)
         {
-            jWriter.WritePropertyName("Filename");
+            jWriter.WritePropertyName("filename");
             if (ContextGraph.SemanticModel.SyntaxTree.FilePath.StartsWith(_repositoryRootPath))
             {
                 jWriter.WriteValue(ContextGraph.SemanticModel.SyntaxTree.FilePath.Substring(_repositoryRootPath.Length));
@@ -87,6 +87,7 @@ namespace SourceGraphExtractionUtils
             {
                 jWriter.WriteValue(ContextGraph.SemanticModel.SyntaxTree.FilePath);
             }
+
             jWriter.WritePropertyName("HoleSpan");
             jWriter.WriteValue(DeletedNode.FullSpan.ToString());
 
@@ -97,7 +98,7 @@ namespace SourceGraphExtractionUtils
             jWriter.WriteValue(DeletedNode.ToString());
 
             var nodeNumberer = new Dictionary<SyntaxNodeOrToken, int>();
-            var dummyNodeLabeler = new Dictionary<SyntaxNodeOrToken, string> { { HoleNode, "<HOLE>" } };
+            var dummyNodeLabeler = new Dictionary<SyntaxNodeOrToken, string> { { HoleNode, "<SLOT>" } };
             nodeNumberer[HoleNode] = 0;
 
             jWriter.WritePropertyName("ContextGraph");
@@ -110,9 +111,16 @@ namespace SourceGraphExtractionUtils
             jWriter.WritePropertyName("LastTokenBeforeHole");
             jWriter.WriteValue(nodeNumberer[LastTokenBeforeHole]);
 
+            jWriter.WritePropertyName("SlotDummyNode");
+            jWriter.WriteValue(0);
+
+            WriteSymbolCandidates(jWriter, LastUseOfVariablesInScope, nodeNumberer);
+
             jWriter.WritePropertyName("LastUseOfVariablesInScope");
             jWriter.WriteStartObject();
             var droppedContextVariables = new HashSet<SyntaxToken>();
+            var tmpi = 1;
+            SyntaxToken tmpToken = LastUseOfVariablesInScope.First();
             foreach (var varNode in LastUseOfVariablesInScope)
             {
                 if (!nodeNumberer.ContainsKey(varNode) || GetAllUses(varNode, IsOutsideOfDeletedNode).Where(t => t.Parent != null).Count() == 0)
@@ -123,8 +131,16 @@ namespace SourceGraphExtractionUtils
                 }
                 jWriter.WritePropertyName(varNode.ToString());
                 jWriter.WriteValue(GetNodeNumber(nodeNumberer, varNode));
+                if (tmpi == 1)
+                {
+                    tmpi = 2;
+                    tmpToken = varNode;
+                }
             }
             jWriter.WriteEndObject();
+
+            jWriter.WritePropertyName("slotTokenIdx");
+            jWriter.WriteValue(GetNodeNumber(nodeNumberer, tmpToken));
 
             var productionNodes = new HashSet<ProducedSymbol>();
             jWriter.WritePropertyName("Productions");
@@ -210,6 +226,37 @@ namespace SourceGraphExtractionUtils
             => WriteTokenArrayWithSelfAndContext(jWriter, currentToken, t => t.GetPreviousToken(), reverse: true);
 
         private bool IsOutsideOfDeletedNode(SyntaxNodeOrToken tok) => !DeletedNode.DescendantNodesAndTokens().Contains(tok);
+
+        private void WriteSymbolCandidates(JsonWriter jWriter, List<SyntaxToken> LastUseOfVariablesInScope, Dictionary<SyntaxNodeOrToken, int> nodeNumberer)
+        {
+            // Write results
+            jWriter.WritePropertyName("SymbolCandidates");
+            jWriter.WriteStartArray();
+            var i = 1;
+            foreach (var varNode in LastUseOfVariablesInScope)
+            {
+                if (!nodeNumberer.ContainsKey(varNode) || GetAllUses(varNode, IsOutsideOfDeletedNode).Where(t => t.Parent != null).Count() == 0)
+                {
+                    Console.WriteLine($"Extraction issue: Dropping variable {varNode} because we don't have its node.");
+                    continue; // May happen for symbols that are inherited or in partial classes.
+                }
+                jWriter.WriteStartObject();
+                jWriter.WritePropertyName("SymbolDummyNode");
+                jWriter.WriteValue(GetNodeNumber(nodeNumberer, varNode));
+
+
+                jWriter.WritePropertyName("SymbolName");
+                jWriter.WriteValue(varNode.ToString());
+
+                jWriter.WritePropertyName("IsCorrect");
+                if (i == 1)
+                { jWriter.WriteValue(true); i = 2; }
+                else
+                    jWriter.WriteValue(false);
+                jWriter.WriteEndObject();
+            }
+            jWriter.WriteEndArray();
+        }
 
         private void WriteVariableTokenContext(JsonWriter jWriter, Dictionary<SyntaxNodeOrToken, int> NodeNumberer,
             HashSet<SyntaxToken> droppedContextVariables)
@@ -965,12 +1012,115 @@ namespace SourceGraphExtractionUtils
         }
         #endregion
 
+        //public void ExtractAllSamplesFromSemanticModel(object sender, SemanticModel semanticModel)
+        //{
+        //    var tree = semanticModel.SyntaxTree;
+        //    if (_fileResumeList.AddIfNotContained(tree.FilePath))
+        //    {
+        //        int numExpressionsExtracted = 0;
+        //        try
+        //        {
+        //            if (tree.FilePath.Contains("TemporaryGeneratedFile") || tree.FilePath.EndsWith(".Generated.cs"))
+        //            {
+        //                Console.WriteLine($"Ignoring file {tree.FilePath}.");
+        //                return; // TODO: Remove any temp files in obj
+        //            }
+        //            //Console.WriteLine($"Writing out samples for {tree.FilePath}");
+                    
+        //            var allTokens = tree.GetRoot().DescendantTokens().Where(t => t.Text.Length > 0).ToArray();
+
+        //            var addedTypes = new HashSet<ITypeSymbol>();
+        //            foreach (var syntaxNode in tree.GetRoot().DescendantNodes())
+        //            {
+        //                var symbol = RoslynUtils.GetReferenceSymbol(syntaxNode, semanticModel);
+        //                if (RoslynUtils.GetTypeSymbol(symbol, out var typeSymbol) && addedTypes.Add(typeSymbol))
+        //                {
+        //                    TypeHierarchy.Add(typeSymbol);
+        //                }
+        //            }
+
+        //            SourceGraph sourceGraph = null;
+                    
+        //            foreach (var simpleExpressionNode in SimpleExpressionIdentifier.GetSimpleExpressions(semanticModel))
+        //            {
+        //                try
+        //                {
+        //                    if (sourceGraph == null)
+        //                    {
+        //                        sourceGraph = ExtractSourceGraph(semanticModel, allTokens); // Compute the graph if we haven't done so yet...
+        //                                                                                    //sourceGraph.ToDotFile(Path.GetFileName(tree.FilePath) + ".graph.dot", sourceGraph.GetNodeNumberer(), new Dictionary<SyntaxNodeOrToken, string>(), false);
+        //                    }
+        //                }
+        //                catch (Exception e)
+        //                {
+        //                    Console.WriteLine($"Error while extracting graph. Aborting file. Cause: {e.Message}");
+        //                    return;
+        //                }
+
+        //                var (contextGraph, holeDummyNode, tokenBeforeHole, variableNodesInScope) = ExtractContextInformationForTargetNode(semanticModel, allTokens, sourceGraph, simpleExpressionNode);
+
+        //                var allVariablesInExpression = RoslynUtils.GetUsedVariableSymbols(semanticModel, simpleExpressionNode, onlyLocalFileVariables: false);
+        //                if (!allVariablesInExpression.Any())
+        //                {
+        //                    // We filter nodes that do not contain any variables.
+        //                    continue;
+        //                }
+
+        //                bool isNotInCurrentFile(ISymbol symbol)
+        //                {
+        //                    var symbolLocation = symbol.Locations.First();
+        //                    return symbolLocation.IsInMetadata || symbolLocation.SourceTree.FilePath != tree.FilePath;
+        //                };
+        //                if (allVariablesInExpression.Count == 0 || allVariablesInExpression.Any(isNotInCurrentFile))
+        //                {
+        //                    continue;
+        //                }
+
+        //                var productions = TurnIntoProductions(simpleExpressionNode).ToList();
+        //                // Debug:
+        //                /*
+        //                Console.WriteLine($"Simple Expression: {simpleExpressionNode}");
+        //                foreach (var (nonterm, productionRhs) in productions)
+        //                {
+        //                    var productionStrings = 
+        //                        productionRhs.Select(t => (t.SymbolKind == ExpansionSymbolKind.Token) ? t.Label.ToString() : t.SymbolKind.ToString()
+        //                                                  + "[" + t.Id + "]"
+        //                                                  + ((t.Label != null) ? "(" + t.Label + ")" : ""));
+        //                    Console.WriteLine($"  {nonterm.SymbolKind.ToString()}[{nonterm.Id}] --> {String.Join("  ", productionStrings)}");
+        //                }
+        //                */
+
+        //                var sample = new HoleContextInformation(_repositoryRootPath, simpleExpressionNode, contextGraph, holeDummyNode, tokenBeforeHole, variableNodesInScope, productions);
+        //                WriteSample(sample);
+        //                numExpressionsExtracted++;
+
+        //                // Optionally invoke additional extractor.
+        //                _additionalExtractors?.Invoke(simpleExpressionNode);
+        //            }
+        //            if (numExpressionsExtracted > 0)
+        //            {
+        //                _log.LogMessage($"Extracted {numExpressionsExtracted} expressions from {tree.FilePath}.");
+        //            }
+        //        }
+        //        catch (Exception e)
+        //        {
+        //            Console.WriteLine($"Exception when extracting data from file: {e.Message}: {e.StackTrace}");
+        //            _log.LogMessage($"Error{e.Message}: {e.StackTrace} while extracting. Managed to extract {numExpressionsExtracted} expressions from {tree.FilePath}.");
+        //        }
+        //        if (_rng.NextDouble() > .9)
+        //        {
+        //            // Once in a while save they type hierarchy
+        //            TypeHierarchy.SaveTypeHierarchy(_typeHierarchyOutputFilename);
+        //        }
+        //    }
+        //}
+
         public void ExtractAllSamplesFromSemanticModel(object sender, SemanticModel semanticModel)
         {
             var tree = semanticModel.SyntaxTree;
             if (_fileResumeList.AddIfNotContained(tree.FilePath))
             {
-                int numExpressionsExtracted = 0;
+                int numIdentifierExtracted = 0;
                 try
                 {
                     if (tree.FilePath.Contains("TemporaryGeneratedFile") || tree.FilePath.EndsWith(".Generated.cs"))
@@ -979,7 +1129,7 @@ namespace SourceGraphExtractionUtils
                         return; // TODO: Remove any temp files in obj
                     }
                     //Console.WriteLine($"Writing out samples for {tree.FilePath}");
-                    
+
                     var allTokens = tree.GetRoot().DescendantTokens().Where(t => t.Text.Length > 0).ToArray();
 
                     var addedTypes = new HashSet<ITypeSymbol>();
@@ -993,7 +1143,8 @@ namespace SourceGraphExtractionUtils
                     }
 
                     SourceGraph sourceGraph = null;
-                    foreach (var simpleExpressionNode in SimpleExpressionIdentifier.GetSimpleExpressions(semanticModel))
+
+                    foreach (var simpleExpressionNode in SimpleExpressionIdentifier.GetSimpleIdentifier(semanticModel))
                     {
                         try
                         {
@@ -1044,20 +1195,20 @@ namespace SourceGraphExtractionUtils
 
                         var sample = new HoleContextInformation(_repositoryRootPath, simpleExpressionNode, contextGraph, holeDummyNode, tokenBeforeHole, variableNodesInScope, productions);
                         WriteSample(sample);
-                        numExpressionsExtracted++;
+                        numIdentifierExtracted++;
 
                         // Optionally invoke additional extractor.
                         _additionalExtractors?.Invoke(simpleExpressionNode);
                     }
-                    if (numExpressionsExtracted > 0)
+                    if (numIdentifierExtracted > 0)
                     {
-                        _log.LogMessage($"Extracted {numExpressionsExtracted} expressions from {tree.FilePath}.");
+                        _log.LogMessage($"Extracted {numIdentifierExtracted} identifiers from {tree.FilePath}.");
                     }
                 }
                 catch (Exception e)
                 {
                     Console.WriteLine($"Exception when extracting data from file: {e.Message}: {e.StackTrace}");
-                    _log.LogMessage($"Error{e.Message}: {e.StackTrace} while extracting. Managed to extract {numExpressionsExtracted} expressions from {tree.FilePath}.");
+                    _log.LogMessage($"Error{e.Message}: {e.StackTrace} while extracting. Managed to extract {numIdentifierExtracted} expressions from {tree.FilePath}.");
                 }
                 if (_rng.NextDouble() > .9)
                 {
@@ -1067,7 +1218,7 @@ namespace SourceGraphExtractionUtils
             }
         }
 
-        
+
 
         private IEnumerable<(ProducedSymbol nonTerminal, IEnumerable<ProducedSymbol> productionRhs)> TurnIntoProductions(SyntaxNode node)
         {
@@ -1247,32 +1398,47 @@ namespace SourceGraphExtractionUtils
         private readonly Dictionary<SyntaxNode, bool> IsSimpleNode;
         private readonly SemanticModel SemanticModel;
 
-        public static IEnumerable<ExpressionSyntax> GetSimpleExpressions(SemanticModel semanticModel)
+        //public static IEnumerable<ExpressionSyntax> GetSimpleExpressions(SemanticModel semanticModel)
+        //{
+        //    var visitor = new SimpleExpressionIdentifier(semanticModel);
+        //    visitor.Visit(semanticModel.SyntaxTree.GetRoot());
+
+        //    foreach (var (node, nodeIsSimple) in visitor.IsSimpleNode)
+        //    {
+        //        //Only return the topmost simple expression:
+        //        if (nodeIsSimple && !visitor.IsSimpleNode[node.Parent] && !(node is ArgumentListSyntax))
+        //        {
+        //            //Special case 1: If we are an argument, the argument list is not simple (checked above), skip this one (instead, exports the encapsulated expression):
+        //            if (node is ArgumentSyntax && node.Parent is ArgumentListSyntax && !visitor.IsSimpleNode[node.Parent.Parent])
+        //            {
+        //                continue;
+        //            }
+        //            //Special case 2: If we are a member access in an Invocation, and our parent is /not/ simple, then one of the arguments isn't simple, so skip the member access:
+        //            if (node is MemberAccessExpressionSyntax && node.Parent is InvocationExpressionSyntax)
+        //            {
+        //                continue;
+        //            }
+
+        //            //Also filter out AST leafs:
+        //            if (node.ChildNodes().Any() && node is ExpressionSyntax expressionNode)
+        //            {
+        //                yield return expressionNode;
+        //            }
+        //        }
+        //    }
+        //}
+
+        public static IEnumerable<ExpressionSyntax> GetSimpleIdentifier(SemanticModel semanticModel)
         {
             var visitor = new SimpleExpressionIdentifier(semanticModel);
             visitor.Visit(semanticModel.SyntaxTree.GetRoot());
 
-            foreach (var (node, nodeIsSimple) in visitor.IsSimpleNode)
+            foreach (var (node, nodeIsSimple) in visitor.IsSimpleNode)  // 遍历所有的结点
             {
-                //Only return the topmost simple expression:
-                if (nodeIsSimple && !visitor.IsSimpleNode[node.Parent] && !(node is ArgumentListSyntax))
+                //直接返回所有simple的IdentifierNameSyntax
+                if (nodeIsSimple && node is IdentifierNameSyntax identifierNode)
                 {
-                    //Special case 1: If we are an argument, the argument list is not simple (checked above), skip this one (instead, exports the encapsulated expression):
-                    if (node is ArgumentSyntax && node.Parent is ArgumentListSyntax && !visitor.IsSimpleNode[node.Parent.Parent])
-                    {
-                        continue;
-                    }
-                    //Special case 2: If we are a member access in an Invocation, and our parent is /not/ simple, then one of the arguments isn't simple, so skip the member access:
-                    if (node is MemberAccessExpressionSyntax && node.Parent is InvocationExpressionSyntax)
-                    {
-                        continue;
-                    }
-
-                    //Also filter out AST leafs:
-                    if (node.ChildNodes().Any() && node is ExpressionSyntax expressionNode)
-                    {
-                        yield return expressionNode;
-                    }
+                    yield return identifierNode;
                 }
             }
         }

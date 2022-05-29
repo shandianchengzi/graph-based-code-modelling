@@ -139,6 +139,7 @@ namespace SourceGraphExtractionUtils.Utils
                     jWriter.WriteValue(GetNodeLabel(node, nodeLabelOverrides));
                 }
                 jWriter.WriteEndObject();
+
             };
 
         public string GetNodeType(SyntaxNodeOrToken node)
