@@ -111,7 +111,9 @@ namespace ExpressionDataExtractor
         {
             ExtractorOptions.ParseCLIArgs(args);
 
-            var graphOutputFilenameTemplate = Path.Combine(ExtractorOptions.GraphOutputPath, $"exprs-graph.jsonl");
+            var outputNameSplit = ExtractorOptions.DataPath.Split('\\');
+            string outputName = outputNameSplit[outputNameSplit.Length-2]+$".jsonl";
+            var graphOutputFilenameTemplate = Path.Combine(ExtractorOptions.GraphOutputPath, outputName);
             var typeHierarchyOutputFile = Path.Combine(ExtractorOptions.TypeHierarchyOutputPath, $"exprs-types.json.gz");
             string extractorLogPath = Path.Combine(ExtractorOptions.GraphOutputPath, "extractor-log");
             string compileLogPath = Path.Combine(ExtractorOptions.GraphOutputPath, "compile-log.txt");

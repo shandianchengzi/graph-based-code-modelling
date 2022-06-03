@@ -32,27 +32,27 @@ namespace SourceGraphExtractionUtils
         }
     }
 
-    public class HoleContextInformation
+    public class SlotContextInformation
     {
         private const int NUM_TOKENS_CONTEXT = 10;
 
         private readonly string _repositoryRootPath;
         public readonly SourceGraph ContextGraph;
         public readonly SyntaxNode DeletedNode;
-        public readonly SyntaxNodeOrToken HoleNode;
-        public readonly SyntaxToken LastTokenBeforeHole;
+        public readonly SyntaxNodeOrToken SlotNode;
+        public readonly SyntaxToken LastTokenBeforeSlot;
         public readonly List<SyntaxToken> LastUseOfVariablesInScope;
         public readonly IEnumerable<(ProducedSymbol nonTerminal, IEnumerable<ProducedSymbol> production)> Productions;
 
-        public HoleContextInformation(string repositoryRootPath, SyntaxNode deletedNode, SourceGraph contextGraph,
-            SyntaxNodeOrToken holeNode, SyntaxToken lastTokenBeforeHole, List<SyntaxToken> lastUseOfVariablesInScope,
+        public SlotContextInformation(string repositoryRootPath, SyntaxNode deletedNode, SourceGraph contextGraph,
+            SyntaxNodeOrToken slotNode, SyntaxToken lastTokenBeforeSlot, List<SyntaxToken> lastUseOfVariablesInScope,
             IEnumerable<(ProducedSymbol nonTerminal, IEnumerable<ProducedSymbol> production)> productions)
         {
             _repositoryRootPath = repositoryRootPath;
             ContextGraph = contextGraph;
             DeletedNode = deletedNode;
-            HoleNode = holeNode;
-            LastTokenBeforeHole = lastTokenBeforeHole;
+            SlotNode = slotNode;
+            LastTokenBeforeSlot = lastTokenBeforeSlot;
             LastUseOfVariablesInScope = lastUseOfVariablesInScope;
             Productions = productions;
         }
@@ -88,39 +88,38 @@ namespace SourceGraphExtractionUtils
                 jWriter.WriteValue(ContextGraph.SemanticModel.SyntaxTree.FilePath);
             }
 
-            jWriter.WritePropertyName("HoleSpan");
+            jWriter.WritePropertyName("SlotSpan");
             jWriter.WriteValue(DeletedNode.FullSpan.ToString());
 
-            jWriter.WritePropertyName("HoleLineSpan");
+            jWriter.WritePropertyName("SlotLineSpan");
             jWriter.WriteValue(DeletedNode.SyntaxTree.GetLineSpan(DeletedNode.Span).Span.ToString());
 
             jWriter.WritePropertyName("OriginalExpression");
             jWriter.WriteValue(DeletedNode.ToString());
 
             var nodeNumberer = new Dictionary<SyntaxNodeOrToken, int>();
-            var dummyNodeLabeler = new Dictionary<SyntaxNodeOrToken, string> { { HoleNode, "<SLOT>" } };
-            nodeNumberer[HoleNode] = 0;
+            var dummyNodeLabeler = new Dictionary<SyntaxNodeOrToken, string> { { SlotNode, "<SLOT>" } };
+            nodeNumberer[SlotNode] = 0;
 
             jWriter.WritePropertyName("ContextGraph");
             ContextGraph.WriteJson(jWriter, nodeNumberer, dummyNodeLabeler,
                 DeletedNode.SyntaxTree.GetLineSpan(DeletedNode.Span).StartLinePosition.Line);
 
-            jWriter.WritePropertyName("HoleNode");
-            jWriter.WriteValue(nodeNumberer[HoleNode]);
+            //jWriter.WritePropertyName("SlotNode");
+            //jWriter.WriteValue(nodeNumberer[SlotNode]);
 
-            jWriter.WritePropertyName("LastTokenBeforeHole");
-            jWriter.WriteValue(nodeNumberer[LastTokenBeforeHole]);
+            //jWriter.WritePropertyName("LastTokenBeforeSlot");
+            //jWriter.WriteValue(nodeNumberer[LastTokenBeforeSlot]);
 
             jWriter.WritePropertyName("SlotDummyNode");
             jWriter.WriteValue(0);
 
-            WriteSymbolCandidates(jWriter, LastUseOfVariablesInScope, nodeNumberer);
+            //jWriter.WritePropertyName("LastUseOfVariablesInScope");
+            //jWriter.WriteStartObject();
 
-            jWriter.WritePropertyName("LastUseOfVariablesInScope");
-            jWriter.WriteStartObject();
-            var droppedContextVariables = new HashSet<SyntaxToken>();
             var tmpi = 1;
             SyntaxToken tmpToken = LastUseOfVariablesInScope.First();
+            var droppedContextVariables = new HashSet<SyntaxToken>();
             foreach (var varNode in LastUseOfVariablesInScope)
             {
                 if (!nodeNumberer.ContainsKey(varNode) || GetAllUses(varNode, IsOutsideOfDeletedNode).Where(t => t.Parent != null).Count() == 0)
@@ -129,70 +128,71 @@ namespace SourceGraphExtractionUtils
                     droppedContextVariables.Add(varNode);
                     continue; // May happen for symbols that are inherited or in partial classes.
                 }
-                jWriter.WritePropertyName(varNode.ToString());
-                jWriter.WriteValue(GetNodeNumber(nodeNumberer, varNode));
+                //jWriter.WritePropertyName(varNode.ToString());
+                //jWriter.WriteValue(GetNodeNumber(nodeNumberer, varNode));
                 if (tmpi == 1)
                 {
                     tmpi = 2;
                     tmpToken = varNode;
                 }
             }
-            jWriter.WriteEndObject();
-
             jWriter.WritePropertyName("slotTokenIdx");
             jWriter.WriteValue(GetNodeNumber(nodeNumberer, tmpToken));
 
-            var productionNodes = new HashSet<ProducedSymbol>();
-            jWriter.WritePropertyName("Productions");
-            jWriter.WriteStartObject();
-            foreach (var (nonterminal, production) in Productions)
-            {
-                jWriter.WritePropertyName(nonterminal.Id.ToString());
-                productionNodes.Add(nonterminal);
-                jWriter.WriteStartArray();
-                foreach (var prodRhsNode in production)
-                {
-                    jWriter.WriteValue(prodRhsNode.Id);
-                    productionNodes.Add(prodRhsNode);
-                }
-                jWriter.WriteEndArray();
-            }
-            jWriter.WriteEndObject();
+            //jWriter.WriteEndObject();
+            WriteSymbolCandidates(jWriter, LastUseOfVariablesInScope, nodeNumberer, droppedContextVariables);
 
-            jWriter.WritePropertyName("SymbolKinds");
-            jWriter.WriteStartObject();
-            foreach (var node in productionNodes)
-            {
-                jWriter.WritePropertyName(node.Id.ToString());
-                jWriter.WriteValue(node.SymbolKind.ToString());
-            }
-            jWriter.WriteEndObject();
+            //var productionNodes = new HashSet<ProducedSymbol>();
+            //jWriter.WritePropertyName("Productions");
+            //jWriter.WriteStartObject();
+            //foreach (var (nonterminal, production) in Productions)
+            //{
+            //    jWriter.WritePropertyName(nonterminal.Id.ToString());
+            //    productionNodes.Add(nonterminal);
+            //    jWriter.WriteStartArray();
+            //    foreach (var prodRhsNode in production)
+            //    {
+            //        jWriter.WriteValue(prodRhsNode.Id);
+            //        productionNodes.Add(prodRhsNode);
+            //    }
+            //    jWriter.WriteEndArray();
+            //}
+            //jWriter.WriteEndObject();
 
-            jWriter.WritePropertyName("SymbolLabels");
-            jWriter.WriteStartObject();
-            foreach (var node in productionNodes)
-            {
-                if (node.Label != null)
-                {
-                    jWriter.WritePropertyName(node.Id.ToString());
-                    jWriter.WriteValue(node.Label.ToString());
-                }
-            }
-            jWriter.WriteEndObject();
+            //jWriter.WritePropertyName("SymbolKinds");
+            //jWriter.WriteStartObject();
+            //foreach (var node in productionNodes)
+            //{
+            //    jWriter.WritePropertyName(node.Id.ToString());
+            //    jWriter.WriteValue(node.SymbolKind.ToString());
+            //}
+            //jWriter.WriteEndObject();
 
-            WriteHoleTokenContext(jWriter);
-            WriteVariableTokenContext(jWriter, nodeNumberer, droppedContextVariables);
+            //jWriter.WritePropertyName("SymbolLabels");
+            //jWriter.WriteStartObject();
+            //foreach (var node in productionNodes)
+            //{
+            //    if (node.Label != null)
+            //    {
+            //        jWriter.WritePropertyName(node.Id.ToString());
+            //        jWriter.WriteValue(node.Label.ToString());
+            //    }
+            //}
+            //jWriter.WriteEndObject();
+
+            //WriteSlotTokenContext(jWriter);
+            //WriteVariableTokenContext(jWriter, nodeNumberer, droppedContextVariables);
 
             return (NodeNumberer: nodeNumberer, NodeLabeler: dummyNodeLabeler);
         }
 
-        private void WriteHoleTokenContext(JsonWriter jWriter)
+        private void WriteSlotTokenContext(JsonWriter jWriter)
         {
-            // Hole context tokens
-            jWriter.WritePropertyName("HoleTokensBefore");
-            WriteArrayWithSelfAndLeftTokenContext(jWriter, LastTokenBeforeHole);
+            // Slot context tokens
+            jWriter.WritePropertyName("SlotTokensBefore");
+            WriteArrayWithSelfAndLeftTokenContext(jWriter, LastTokenBeforeSlot);
 
-            jWriter.WritePropertyName("HoleTokensAfter");
+            jWriter.WritePropertyName("SlotTokensAfter");
             WriteArrayWithSelfAndRightTokenContext(jWriter, DeletedNode.GetLastToken().GetNextToken());
         }
 
@@ -227,19 +227,16 @@ namespace SourceGraphExtractionUtils
 
         private bool IsOutsideOfDeletedNode(SyntaxNodeOrToken tok) => !DeletedNode.DescendantNodesAndTokens().Contains(tok);
 
-        private void WriteSymbolCandidates(JsonWriter jWriter, List<SyntaxToken> LastUseOfVariablesInScope, Dictionary<SyntaxNodeOrToken, int> nodeNumberer)
+        private void WriteSymbolCandidates(JsonWriter jWriter, List<SyntaxToken> LastUseOfVariablesInScope, Dictionary<SyntaxNodeOrToken, int> nodeNumberer, HashSet<SyntaxToken> droppedContextVariables)
         {
+            // First for each variable, find all its tokens not in the DeletedNode.            
+            var allVariableUses = LastUseOfVariablesInScope.Except(droppedContextVariables);
             // Write results
             jWriter.WritePropertyName("SymbolCandidates");
             jWriter.WriteStartArray();
             var i = 1;
-            foreach (var varNode in LastUseOfVariablesInScope)
+            foreach (var varNode in allVariableUses)
             {
-                if (!nodeNumberer.ContainsKey(varNode) || GetAllUses(varNode, IsOutsideOfDeletedNode).Where(t => t.Parent != null).Count() == 0)
-                {
-                    Console.WriteLine($"Extraction issue: Dropping variable {varNode} because we don't have its node.");
-                    continue; // May happen for symbols that are inherited or in partial classes.
-                }
                 jWriter.WriteStartObject();
                 jWriter.WritePropertyName("SymbolDummyNode");
                 jWriter.WriteValue(GetNodeNumber(nodeNumberer, varNode));
@@ -496,7 +493,7 @@ namespace SourceGraphExtractionUtils
             }
         }
 
-        private void WriteSample(HoleContextInformation sample)
+        private void WriteSample(SlotContextInformation sample)
         {
             _writer.WriteElement(jw => sample.WriteJson(jw));
         }
@@ -674,7 +671,7 @@ namespace SourceGraphExtractionUtils
         }
         #endregion
 
-        #region Expression hole-specific graph extraction
+        #region Expression slot-specific graph extraction
         private static void GetReachableNodes(SourceGraph graph,
             int[] edgeTypeToCost,
             int startCostBudget,
@@ -730,7 +727,7 @@ namespace SourceGraphExtractionUtils
         }
 
 
-        private static void CopySubgraphAroundHole(
+        private static void CopySubgraphAroundSlot(
             SourceGraph sourceGraph,
             IEnumerable<SyntaxNodeOrToken> targetNodes,
             ISet<SyntaxNodeOrToken> forbiddenNodes,
@@ -801,14 +798,14 @@ namespace SourceGraphExtractionUtils
             }
         }
 
-        public (SourceGraph contextGraph, SyntaxToken holeDummyNode, SyntaxToken tokenBeforeHole, List<SyntaxToken> variableInHoleDummyNodes) ExtractContextInformationForTargetNode(SemanticModel semanticModel, SyntaxToken[] allTokens, SourceGraph sourceGraph, SyntaxNode targetNode)
+        public (SourceGraph contextGraph, SyntaxToken slotDummyNode, SyntaxToken tokenBeforeSlot, List<SyntaxToken> variableInSlotDummyNodes) ExtractContextInformationForTargetNode(SemanticModel semanticModel, SyntaxToken[] allTokens, SourceGraph sourceGraph, SyntaxNode targetNode)
         {
-            var holeNodes = new HashSet<SyntaxNodeOrToken>(targetNode.DescendantNodesAndTokensAndSelf());
-            var firstHoleTokenIdx = Array.FindIndex(allTokens, t => holeNodes.Contains(t));
-            var lastHoleTokenIdx = Array.FindLastIndex(allTokens, t => holeNodes.Contains(t));
+            var slotNodes = new HashSet<SyntaxNodeOrToken>(targetNode.DescendantNodesAndTokensAndSelf());
+            var firstSlotTokenIdx = Array.FindIndex(allTokens, t => slotNodes.Contains(t));
+            var lastSlotTokenIdx = Array.FindLastIndex(allTokens, t => slotNodes.Contains(t));
 
             // Identify all symbols that are of types we consider and that are in scope:
-            var symbolsInScope = RoslynUtils.GetAvailableValueSymbols(semanticModel, holeNodes.First(n => n.IsToken).AsToken());
+            var symbolsInScope = RoslynUtils.GetAvailableValueSymbols(semanticModel, slotNodes.First(n => n.IsToken).AsToken());
             var typeLimitedSymbolsInScope = symbolsInScope.Where(sym => HasSimpleType(sym));
 
             /* // Debug code:
@@ -819,36 +816,36 @@ namespace SourceGraphExtractionUtils
             Console.WriteLine($"Vars in Scope:  {String.Join(" ; ", debug.Select(symWithSymTyp => $"{symWithSymTyp.symbolType} {symWithSymTyp.sym.Name}"))}");
             */
 
-            // Find all edges connecting the rest of the graph to the hole we are making:
-            SyntaxToken tokenBeforeHole = default;
-            SyntaxNodeOrToken lastUsedVariableBeforeHole = default;
-            SyntaxNodeOrToken lastUsedVariableAfterHole = default;
+            // Find all edges connecting the rest of the graph to the slot we are making:
+            SyntaxToken tokenBeforeSlot = default;
+            SyntaxNodeOrToken lastUsedVariableBeforeSlot = default;
+            SyntaxNodeOrToken lastUsedVariableAfterSlot = default;
             var variableToLastLexicalUse = new Dictionary<string, SyntaxNodeOrToken>();
             var variableToNextLexicalUse = new Dictionary<string, SyntaxNodeOrToken>();
-            var dataflowSuccessorsOfHole = new HashSet<SyntaxNodeOrToken>();
+            var dataflowSuccessorsOfSlot = new HashSet<SyntaxNodeOrToken>();
 
-            foreach (var holeNode in holeNodes)
+            foreach (var slotNode in slotNodes)
             {
-                var (inEdges, outEdges) = sourceGraph.GetEdges(holeNode);
+                var (inEdges, outEdges) = sourceGraph.GetEdges(slotNode);
                 foreach (var (otherNode, label, _) in inEdges)
                 {
                     // We can safely ignore these, because we don't need to update anything related to them:
                     if (label == SourceGraphEdge.Child) continue;
 
-                    // Look only at edges crossing the boundary between hole/context:
-                    if (!holeNodes.Contains(otherNode))
+                    // Look only at edges crossing the boundary between slot/context:
+                    if (!slotNodes.Contains(otherNode))
                     {
                         if (label == SourceGraphEdge.NextToken)
                         {
-                            tokenBeforeHole = otherNode.AsToken();  // This is the lexical predecessor of the hole.
+                            tokenBeforeSlot = otherNode.AsToken();  // This is the lexical predecessor of the slot.
                         }
                         else if (label == SourceGraphEdge.LastUsedVariable)
                         {
-                            lastUsedVariableAfterHole = otherNode;  // This is the variable use successor of the hole
+                            lastUsedVariableAfterSlot = otherNode;  // This is the variable use successor of the slot
                         }
                         else if (label == SourceGraphEdge.LastUse || label == SourceGraphEdge.LastWrite)
                         {
-                            dataflowSuccessorsOfHole.Add(otherNode);  // This node's dataflow is influenced by the hole
+                            dataflowSuccessorsOfSlot.Add(otherNode);  // This node's dataflow is influenced by the slot
                         }
                     }
                 }
@@ -857,29 +854,29 @@ namespace SourceGraphExtractionUtils
                     // We can safely ignore these, because we don't need to update anything related to them:
                     if (label == SourceGraphEdge.Child) continue;
 
-                    // Look only at edges crossing the boundary between hole/context:
-                    if (!holeNodes.Contains(otherNode))
+                    // Look only at edges crossing the boundary between slot/context:
+                    if (!slotNodes.Contains(otherNode))
                     {
                         if (label == SourceGraphEdge.LastUsedVariable)
                         {
-                            lastUsedVariableBeforeHole = otherNode;  // This is the variable use predecessor of the hole
+                            lastUsedVariableBeforeSlot = otherNode;  // This is the variable use predecessor of the slot
                         }
                     }
                 }
             }
 
-            // Now to the actual copying. First, add a dummy node that will stand in for the expression, and then just copy everything "near" the hole, but nothing in the hole.
+            // Now to the actual copying. First, add a dummy node that will stand in for the expression, and then just copy everything "near" the slot, but nothing in the slot.
             var resultGraph = SourceGraph.Create(sourceGraph);
-            var holeDummyNode = SyntaxFactory.Identifier("%HOLE%");
+            var slotDummyNode = SyntaxFactory.Identifier("%HOLE%");
             var targetNodeType = semanticModel.GetTypeInfo(targetNode).Type;
-            resultGraph.OverrideTypeForNode(holeDummyNode, targetNodeType?.ToString() ?? "?");
-            resultGraph.AddEdge(targetNode.Parent, SourceGraphEdge.Child, holeDummyNode);
-            resultGraph.AddEdge(allTokens[firstHoleTokenIdx - 1], SourceGraphEdge.NextToken, holeDummyNode);
-            resultGraph.AddEdge(holeDummyNode, SourceGraphEdge.NextToken, allTokens[lastHoleTokenIdx + 1]);
+            resultGraph.OverrideTypeForNode(slotDummyNode, targetNodeType?.ToString() ?? "?");
+            resultGraph.AddEdge(targetNode.Parent, SourceGraphEdge.Child, slotDummyNode);
+            resultGraph.AddEdge(allTokens[firstSlotTokenIdx - 1], SourceGraphEdge.NextToken, slotDummyNode);
+            resultGraph.AddEdge(slotDummyNode, SourceGraphEdge.NextToken, allTokens[lastSlotTokenIdx + 1]);
             //Make sure that we have all the important nodes in the graph:
-            var (lastTokeninEdges, lastTokenoutEdges) = sourceGraph.GetEdges(tokenBeforeHole);
+            var (lastTokeninEdges, lastTokenoutEdges) = sourceGraph.GetEdges(tokenBeforeSlot);
             foreach (var edge in lastTokeninEdges.Concat(lastTokenoutEdges)) { resultGraph.AddEdge(edge); }
-            CopySubgraphAroundHole(sourceGraph, holeNodes, holeNodes, resultGraph);
+            CopySubgraphAroundSlot(sourceGraph, slotNodes, slotNodes, resultGraph);
 
             // Now add dummy nodes for all variables that we may need to consider:
             var symbolDummyTokenList = new List<SyntaxToken>();
@@ -898,14 +895,14 @@ namespace SourceGraphExtractionUtils
                     resultGraph.OverrideTypeForNode(symbolDummyNode, SourceGraph.NOTYPE_NAME);
                 }
 
-                // Step 1: Insert edges linking the dummy node to the context surrounding the hole:
-                if (lastUsedVariableBeforeHole != default)
+                // Step 1: Insert edges linking the dummy node to the context surrounding the slot:
+                if (lastUsedVariableBeforeSlot != default)
                 {
-                    sourceGraph.AddEdge(symbolDummyNode, SourceGraphEdge.LastUsedVariable, lastUsedVariableBeforeHole);
+                    sourceGraph.AddEdge(symbolDummyNode, SourceGraphEdge.LastUsedVariable, lastUsedVariableBeforeSlot);
                 }
-                if (lastUsedVariableAfterHole != default)
+                if (lastUsedVariableAfterSlot != default)
                 {
-                    sourceGraph.AddEdge(lastUsedVariableAfterHole, SourceGraphEdge.LastUsedVariable, symbolDummyNode);
+                    sourceGraph.AddEdge(lastUsedVariableAfterSlot, SourceGraphEdge.LastUsedVariable, symbolDummyNode);
                 }
 
                 var newEdges = new List<Edge<SyntaxNodeOrToken, SourceGraphEdge>>();
@@ -913,9 +910,9 @@ namespace SourceGraphExtractionUtils
                 try
                 {
                     //Step 2: Insert new dataflow edges from dummy node
-                    DataFlowGraphHelper.AddDataFlowEdges(sourceGraph, symbolDummyNode, forbiddenNodes: holeNodes, addedEdges: newEdges);
+                    DataFlowGraphHelper.AddDataFlowEdges(sourceGraph, symbolDummyNode, forbiddenNodes: slotNodes, addedEdges: newEdges);
 
-                    //Step 3: Update dataflow edges from things that follow hole
+                    //Step 3: Update dataflow edges from things that follow slot
                     //We use that nodes whose dataflow depends on the new nodes would have been connected to the nodes used as targets of our new dummy node's dataflow edges.
                     //Thus, we look at their incoming edges, and recompute dataflow for the sources of those:
                     var possiblyInfluencedNodes = new HashSet<SyntaxNodeOrToken>();
@@ -934,7 +931,7 @@ namespace SourceGraphExtractionUtils
 
                     //Step 4: Update lexical use information. Find previous and last uses:
                     int prevIdx = Array.FindLastIndex(allTokens,
-                        firstHoleTokenIdx - 1,
+                        firstSlotTokenIdx - 1,
                         curTok => curTok.Text.Equals(symbolInScope.Name) && sourceGraph.UsedVariableNodes.Contains(curTok));
                     if (prevIdx > 0)
                     {
@@ -950,7 +947,7 @@ namespace SourceGraphExtractionUtils
                         sourceGraph.AddEdge(symbolDummyNode, SourceGraphEdge.LastLexicalUse, prevTok);
                     }
                     int nextIdx = Array.FindIndex(allTokens,
-                        lastHoleTokenIdx + 1,
+                        lastSlotTokenIdx + 1,
                         curTok => curTok.Text.Equals(symbolInScope.Name) && sourceGraph.UsedVariableNodes.Contains(curTok));
                     if (nextIdx > 0)
                     {
@@ -972,16 +969,16 @@ namespace SourceGraphExtractionUtils
                         sourceGraph.RemoveEdge(edgeToRemove);
                     }
 
-                    foreach (var changedNode in possiblyInfluencedNodes.Concat(dataflowSuccessorsOfHole))
+                    foreach (var changedNode in possiblyInfluencedNodes.Concat(dataflowSuccessorsOfSlot))
                     {
-                        DataFlowGraphHelper.AddDataFlowEdges(sourceGraph, changedNode, forbiddenNodes: holeNodes, addedEdges: newEdges);
+                        DataFlowGraphHelper.AddDataFlowEdges(sourceGraph, changedNode, forbiddenNodes: slotNodes, addedEdges: newEdges);
                     }
 
                     //Extract the actual subgraph around that dummy node:
-                    CopySubgraphAroundHole(
+                    CopySubgraphAroundSlot(
                         sourceGraph,
                         new SyntaxNodeOrToken[] { symbolDummyNode },
-                        holeNodes,
+                        slotNodes,
                         resultGraph,
                         numSymbolsAddedSoFar);
                     symbolDummyTokenList.Add(symbolDummyNode);
@@ -1008,7 +1005,7 @@ namespace SourceGraphExtractionUtils
                 resultGraph.RemoveEdge(edge);
             }
 
-            return (resultGraph, holeDummyNode, tokenBeforeHole, symbolDummyTokenList);
+            return (resultGraph, slotDummyNode, tokenBeforeSlot, symbolDummyTokenList);
         }
         #endregion
 
@@ -1057,7 +1054,7 @@ namespace SourceGraphExtractionUtils
         //                    return;
         //                }
 
-        //                var (contextGraph, holeDummyNode, tokenBeforeHole, variableNodesInScope) = ExtractContextInformationForTargetNode(semanticModel, allTokens, sourceGraph, simpleExpressionNode);
+        //                var (contextGraph, slotDummyNode, tokenBeforeSlot, variableNodesInScope) = ExtractContextInformationForTargetNode(semanticModel, allTokens, sourceGraph, simpleExpressionNode);
 
         //                var allVariablesInExpression = RoslynUtils.GetUsedVariableSymbols(semanticModel, simpleExpressionNode, onlyLocalFileVariables: false);
         //                if (!allVariablesInExpression.Any())
@@ -1090,7 +1087,7 @@ namespace SourceGraphExtractionUtils
         //                }
         //                */
 
-        //                var sample = new HoleContextInformation(_repositoryRootPath, simpleExpressionNode, contextGraph, holeDummyNode, tokenBeforeHole, variableNodesInScope, productions);
+        //                var sample = new SlotContextInformation(_repositoryRootPath, simpleExpressionNode, contextGraph, slotDummyNode, tokenBeforeSlot, variableNodesInScope, productions);
         //                WriteSample(sample);
         //                numExpressionsExtracted++;
 
@@ -1160,7 +1157,7 @@ namespace SourceGraphExtractionUtils
                             return;
                         }
 
-                        var (contextGraph, holeDummyNode, tokenBeforeHole, variableNodesInScope) = ExtractContextInformationForTargetNode(semanticModel, allTokens, sourceGraph, simpleExpressionNode);
+                        var (contextGraph, slotDummyNode, tokenBeforeSlot, variableNodesInScope) = ExtractContextInformationForTargetNode(semanticModel, allTokens, sourceGraph, simpleExpressionNode);
 
                         var allVariablesInExpression = RoslynUtils.GetUsedVariableSymbols(semanticModel, simpleExpressionNode, onlyLocalFileVariables: false);
                         if (!allVariablesInExpression.Any())
@@ -1193,7 +1190,7 @@ namespace SourceGraphExtractionUtils
                         }
                         */
 
-                        var sample = new HoleContextInformation(_repositoryRootPath, simpleExpressionNode, contextGraph, holeDummyNode, tokenBeforeHole, variableNodesInScope, productions);
+                        var sample = new SlotContextInformation(_repositoryRootPath, simpleExpressionNode, contextGraph, slotDummyNode, tokenBeforeSlot, variableNodesInScope, productions);
                         WriteSample(sample);
                         numIdentifierExtracted++;
 
